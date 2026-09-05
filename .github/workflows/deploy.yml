@@ -1,4 +1,4 @@
-name: Deploy FlowConvert to GitHub Pages
+name: Deploy GoWithFlow to GitHub Pages
 on:
   push:
     branches: [main]

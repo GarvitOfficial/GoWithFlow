@@ -12,5 +12,5 @@ export default defineConfig({
       'Cross-Origin-Embedder-Policy': 'require-corp'
     }
   },
-  base: process.env.GITHUB_ACTIONS ? '/FlowConvert/' : '/'
+  base: process.env.GITHUB_ACTIONS ? '/GoWithFlow/' : '/'
 })
