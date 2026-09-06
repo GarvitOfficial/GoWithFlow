@@ -142,14 +142,33 @@ export async function convertImageToPdf(file: File): Promise<Output> {
   return { blob, name: `${baseName(file.name)}.pdf`, type: 'application/pdf', kind: 'file' }
 }
 
+const getPublicAssetUrl = (path: string) => {
+  const cleanPath = path.startsWith('/') ? path.slice(1) : path
+  const base = import.meta.env.BASE_URL || '/'
+  return new URL(cleanPath, new URL(base, window.location.href)).href
+}
+
+async function getPdfDocument(pdfjs: typeof import('pdfjs-dist'), data: Uint8Array) {
+  const localWorker = getPublicAssetUrl('pdf.worker.min.mjs')
+  const fontsUrl = getPublicAssetUrl('standard_fonts/')
+
+  pdfjs.GlobalWorkerOptions.workerSrc = localWorker
+
+  try {
+    return await pdfjs.getDocument({ data, standardFontDataUrl: fontsUrl }).promise
+  } catch (err) {
+    console.warn('Local PDF worker failed, falling back to CDN worker...', err)
+    const cdnWorker = `https://unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`
+    pdfjs.GlobalWorkerOptions.workerSrc = cdnWorker
+    return await pdfjs.getDocument({ data, standardFontDataUrl: fontsUrl }).promise
+  }
+}
+
 /** Extracts the embedded text layer. Scanned PDFs need the separate OCR node. */
 export async function convertPdfToText(file: File): Promise<Output> {
   const pdfjs = await import('pdfjs-dist')
-  if (!pdfjs.GlobalWorkerOptions.workerSrc) {
-    pdfjs.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs'
-  }
   const data = new Uint8Array(await file.arrayBuffer())
-  const pdf = await pdfjs.getDocument({ data, standardFontDataUrl: '/standard_fonts/' }).promise
+  const pdf = await getPdfDocument(pdfjs, data)
   const pages: string[] = []
   for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber++) {
     const content = await (await pdf.getPage(pageNumber)).getTextContent()
@@ -162,11 +181,8 @@ export async function convertPdfToText(file: File): Promise<Output> {
 
 export async function convertPdfToImages(file: File): Promise<Output> {
   const pdfjs = await import('pdfjs-dist')
-  if (!pdfjs.GlobalWorkerOptions.workerSrc) {
-    pdfjs.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs'
-  }
   const data = new Uint8Array(await file.arrayBuffer())
-  const pdf = await pdfjs.getDocument({ data, standardFontDataUrl: '/standard_fonts/' }).promise
+  const pdf = await getPdfDocument(pdfjs, data)
   const files: Record<string, Uint8Array> = {}
   let firstPreview: string | undefined
   for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber++) {
@@ -193,8 +209,8 @@ async function getFfmpeg() {
   if (!ffmpeg) {
     ffmpeg = new FFmpeg()
     try {
-      const coreURL = await toBlobURL('/ffmpeg/ffmpeg-core.js', 'text/javascript')
-      const wasmURL = await toBlobURL('/ffmpeg/ffmpeg-core.wasm', 'application/wasm')
+      const coreURL = await toBlobURL(getPublicAssetUrl('ffmpeg/ffmpeg-core.js'), 'text/javascript')
+      const wasmURL = await toBlobURL(getPublicAssetUrl('ffmpeg/ffmpeg-core.wasm'), 'application/wasm')
       await ffmpeg.load({ coreURL, wasmURL })
     } catch (localErr) {
       console.warn('Local FFmpeg load failed, attempting CDN fallback...', localErr)
